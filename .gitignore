@@ -1,0 +1,19 @@
+# Ignore node_modules (backend & frontend)
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Ignore build and dependencies
+dist/
+build/
+
+# Ignore system files
+.DS_Store
+*.log
+
+# Ignore .env files (if you use them)
+.env
+.env.local
+
+# Ignore uploads folder if you don't want to push recorded files
+backend/uploads/
