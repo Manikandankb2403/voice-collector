@@ -36,8 +36,8 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
         if (response.data.success) {
             const fileData = response.data.data;
 
-            // ✅ Extract the correct download link from KrakenFiles API response
-            const fileUrl = fileData.url || fileData.download_url || fileData.links.file;  
+            // ✅ Extract the **real** download link
+            const fileUrl = fileData.url || fileData.download_url || fileData.links.file;
 
             if (!fileUrl) {
                 console.error("❌ No valid download URL returned from KrakenFiles");
