@@ -46,7 +46,7 @@ const Recorder = () => {
   // ✅ Fetch recorded audio files
   const fetchAudioFiles = async () => {
     try {
-      const response = await axios.get("http://localhost:3000/audio/files");
+      const response = await axios.get("https://voice-collector-backend.onrender.com/audio/files");
       setRecordedFiles(response.data);
     } catch (error) {
       console.error("❌ Error loading audio files:", error);
@@ -130,7 +130,7 @@ const Recorder = () => {
         const textId = currentText.id || `text_${Date.now()}`; // Use text ID or fallback
         formData.append("audio", audioBlob, `${textId}.wav`);
 
-        const response = await axios.post("http://localhost:3000/audio/upload", formData, {
+        const response = await axios.post("https://voice-collector-backend.onrender.com/audio/upload", formData, {
             headers: { "Content-Type": "multipart/form-data" },
         });
 
