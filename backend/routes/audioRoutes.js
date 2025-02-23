@@ -9,7 +9,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 const KRAKENFILES_API_URL = "https://api.krakenfiles.com/v1/upload";
-const KRAKENFILES_API_KEY = process.env.KRAKENFILES_API_KEY; // Ensure this is set in .env
+const KRAKENFILES_API_KEY = process.env.KRAKENFILES_API_KEY; // Set this in .env
 
 // ✅ Upload audio to KrakenFiles
 router.post("/upload", upload.single("audio"), async (req, res) => {
@@ -18,7 +18,6 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
     try {
         console.log(`📤 Uploading ${req.file.originalname} to KrakenFiles...`);
 
-        // ✅ Ensure API key is set
         if (!KRAKENFILES_API_KEY) {
             console.error("❌ Missing KrakenFiles API Key in .env");
             return res.status(500).json({ error: "Server misconfiguration: API key missing" });
@@ -35,13 +34,21 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
         });
 
         if (response.data.success) {
-            // ✅ Extract correct download URL
-            const fileUrl = response.data.data.url;
+            const fileData = response.data.data;
+
+            // ✅ Extract the correct download link from KrakenFiles API response
+            const fileUrl = fileData.url || fileData.download_url || fileData.links.file;  
+
+            if (!fileUrl) {
+                console.error("❌ No valid download URL returned from KrakenFiles");
+                return res.status(500).json({ error: "Invalid KrakenFiles response", details: fileData });
+            }
+
             console.log(`✅ File uploaded successfully: ${fileUrl}`);
 
             return res.json({
                 message: "File uploaded successfully!",
-                url: fileUrl // ✅ Correct URL
+                url: fileUrl // ✅ Correct KrakenFiles link
             });
         } else {
             console.error("❌ Upload failed:", response.data);
