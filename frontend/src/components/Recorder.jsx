@@ -130,14 +130,20 @@ const Recorder = () => {
         const textId = currentText.id || `text_${Date.now()}`; // Use text ID or fallback
         formData.append("audio", audioBlob, `${textId}.wav`);
 
+        // ✅ Upload to backend (which handles KrakenFiles)
         const response = await axios.post("https://voice-collector-backend.onrender.com/audio/upload", formData, {
             headers: { "Content-Type": "multipart/form-data" },
         });
 
-        console.log("✅ File uploaded:", response.data.fileUrl);
-        
-      // ✅ Remove first text from JSONBin.io after saving
-      await removeFirstText();
+        if (response.data.url) {
+            console.log(`✅ File uploaded: ${response.data.url}`);
+            alert(`✅ File uploaded: ${response.data.url}`);
+        } else {
+            console.error("❌ Upload failed:", response.data);
+        }
+
+        // ✅ Remove first text from JSONBin.io after saving
+        await removeFirstText();
 
         setAudioBlob(null);
         setAudioUrl(null);
