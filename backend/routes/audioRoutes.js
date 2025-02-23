@@ -1,54 +1,66 @@
 const express = require("express");
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs-extra");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+require("dotenv").config();
+
+// Configure Cloudinary
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const router = express.Router();
-const uploadsFolderPath = path.join(__dirname, "../uploads");
 
-// Ensure the uploads folder exists
-fs.ensureDirSync(uploadsFolderPath);
-
-// ✅ Custom Multer Storage - Extract ID from `req.body`
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadsFolderPath);
-    },
-    filename: (req, file, cb) => {
-        // ✅ Wait for Multer to process text fields
-        process.nextTick(() => {
-            console.log("📥 Received upload request");
-            console.log("🆔 Received ID:", req.body.id);
-
-            if (!req.body.id) {
-                console.error("❌ Error: Missing ID in request");
-                return cb(new Error("Missing ID in request"), null);
-            }
-
-            const filename = `${req.body.id}.wav`;
-            console.log("📁 Saving file as:", filename);
-            cb(null, filename);
-        });
+// Configure Cloudinary storage
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: "voice-recordings", // Folder in Cloudinary
+        resource_type: "auto",
+        allowed_formats: ["wav", "mp3"], // Allowed audio formats
+        transformation: [{ quality: "auto" }]
     },
 });
 
 const upload = multer({ storage: storage });
 
-// ✅ Handle Audio Upload
-router.post("/upload", upload.single("audio"), (req, res) => {
-    console.log("✅ File uploaded successfully:", req.file.filename);
-    res.json({ message: "File uploaded successfully!", filename: req.file.filename });
+// Upload audio file to Cloudinary
+router.post("/upload", upload.single("audio"), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded" });
+        }
+
+        // Return the Cloudinary URL
+        return res.json({
+            message: "File uploaded successfully",
+            fileUrl: req.file.path, // Cloudinary URL
+        });
+    } catch (error) {
+        console.error("❌ Upload error:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
 });
 
-// ✅ Fetch Recorded Files
-router.get("/files", (req, res) => {
-    fs.readdir(uploadsFolderPath, (err, files) => {
-        if (err) {
-            console.error("❌ Error reading uploads folder:", err);
-            return res.status(500).json({ error: "Error reading uploads folder" });
-        }
+// Get list of uploaded files from Cloudinary
+router.get("/files", async (req, res) => {
+    try {
+        const result = await cloudinary.search
+            .expression('folder:voice-recordings')
+            .execute();
+
+        const files = result.resources.map(file => ({
+            url: file.secure_url,
+            created_at: file.created_at
+        }));
+
         res.json(files);
-    });
+    } catch (error) {
+        console.error("❌ Error fetching files:", error);
+        res.status(500).json({ error: "Error fetching files" });
+    }
 });
 
 module.exports = router;

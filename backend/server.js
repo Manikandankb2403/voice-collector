@@ -1,37 +1,78 @@
 const express = require("express");
+const multer = require("multer");
 const cors = require("cors");
-const fs = require("fs-extra");
+const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = 3000;
-
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Ensure required folders exist
-const dataFolderPath = path.join(__dirname, "data");
-const uploadsFolderPath = path.join(__dirname, "uploads");
-const textsFilePath = path.join(dataFolderPath, "texts.json");
 
-fs.ensureDirSync(dataFolderPath);
-fs.ensureDirSync(uploadsFolderPath);
+// ✅ Set up Multer storage for audio uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, "uploads");
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        cb(null, `audio_${Date.now()}.wav`);
+    }
+});
 
-// Create texts.json if missing
-if (!fs.existsSync(textsFilePath)) {
-    fs.writeJsonSync(textsFilePath, []);
-}
 
-console.log("📁 Server initialized. Data and uploads folders are set up.");
+const upload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+            const uploadPath = path.join(__dirname, "uploads");
+            if (!fs.existsSync(uploadPath)) {
+                fs.mkdirSync(uploadPath, { recursive: true });
+            }
+            cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+            const originalName = file.originalname;
+            cb(null, originalName); // Use the provided filename
+        }
+    })
+});
+// ✅ API to get the list of uploaded audio files
+app.get("/audio/files", (req, res) => {
+    const uploadPath = path.join(__dirname, "uploads");
 
-// Routes
-const textRoutes = require("./routes/textRoutes");
-const audioRoutes = require("./routes/audioRoutes");
+    // Check if the upload directory exists
+    if (!fs.existsSync(uploadPath)) {
+        return res.json({ files: [] }); // Return empty list if no files
+    }
 
-app.use("/texts", textRoutes);
-app.use("/audio", audioRoutes);
+    // Read all files in the uploads folder
+    fs.readdir(uploadPath, (err, files) => {
+        if (err) {
+            return res.status(500).json({ error: "Failed to read files" });
+        }
 
+        // Generate URLs for the files
+        const fileUrls = files.map(file => `http://localhost:3000/uploads/${file}`);
+        res.json({ files: fileUrls });
+    });
+});
+
+
+// ✅ API to handle file uploads
+app.post("/audio/upload", upload.single("audio"), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+    }
+    res.json({ fileUrl: `http://localhost:3000/uploads/${req.file.filename}` });
+});
+
+// ✅ Serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+const PORT = 3000;
 app.listen(PORT, () => {
-    console.log(`✅ Server running at http://localhost:${PORT}`);
+    console.log(`✅ Server running on http://localhost:${PORT}`);
 });
