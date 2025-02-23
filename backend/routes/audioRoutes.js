@@ -9,7 +9,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 const KRAKENFILES_API_URL = "https://api.krakenfiles.com/v1/upload";
-const KRAKENFILES_API_KEY = process.env.KRAKENFILES_API_KEY; // Store API key in .env
+const KRAKENFILES_API_KEY = process.env.KRAKENFILES_API_KEY; // Ensure this is set in .env
 
 // ✅ Upload audio to KrakenFiles
 router.post("/upload", upload.single("audio"), async (req, res) => {
@@ -17,6 +17,12 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
 
     try {
         console.log(`📤 Uploading ${req.file.originalname} to KrakenFiles...`);
+
+        // ✅ Ensure API key is set
+        if (!KRAKENFILES_API_KEY) {
+            console.error("❌ Missing KrakenFiles API Key in .env");
+            return res.status(500).json({ error: "Server misconfiguration: API key missing" });
+        }
 
         const formData = new FormData();
         formData.append("file", req.file.buffer, req.file.originalname);
@@ -29,17 +35,25 @@ router.post("/upload", upload.single("audio"), async (req, res) => {
         });
 
         if (response.data.success) {
+            // ✅ Extract correct download URL
             const fileUrl = response.data.data.url;
-            console.log(`✅ File uploaded: ${fileUrl}`);
-            return res.json({ message: "File uploaded successfully!", url: fileUrl });
+            console.log(`✅ File uploaded successfully: ${fileUrl}`);
+
+            return res.json({
+                message: "File uploaded successfully!",
+                url: fileUrl // ✅ Correct URL
+            });
         } else {
-            throw new Error("Upload failed");
+            console.error("❌ Upload failed:", response.data);
+            return res.status(500).json({ error: "KrakenFiles upload failed", details: response.data });
         }
     } catch (error) {
-        console.error("❌ Error uploading file:", error);
-        return res.status(500).json({ error: "Upload failed" });
+        console.error("❌ Upload error:", error.response?.data || error.message);
+        return res.status(500).json({ error: "Internal server error", details: error.response?.data || error.message });
     }
 });
+
+// ✅ Serve uploaded files
 // Get list of uploaded files from Cloudinary
 router.get("/files", async (req, res) => {
     try {
