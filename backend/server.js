@@ -55,7 +55,7 @@ app.get("/audio/files", (req, res) => {
         }
 
         // Generate URLs for the files
-        const fileUrls = files.map(file => `https://mega.nz/folder/euAz2bQY#lJiU-hPZaIeDgMHSzQSJoQ/${file}`);
+        const fileUrls = files.map(file => `https://krakenfiles.com/api/remote-file/${file}`);
         res.json({ files: fileUrls });
     });
 });
@@ -66,7 +66,7 @@ app.post("/audio/upload", upload.single("audio"), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
     }
-    res.json({ fileUrl: `https://mega.nz/folder/euAz2bQY#lJiU-hPZaIeDgMHSzQSJoQ/${req.file.filename}` });
+    res.json({ fileUrl: `https://krakenfiles.com/api/remote-file/${req.file.filename}` });
 });
 
 // ✅ Serve uploaded files
