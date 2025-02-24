@@ -5,43 +5,53 @@ const fs = require("fs");
 const path = require("path");
 const { Dropbox } = require("dropbox");
 const ffmpeg = require("fluent-ffmpeg");
-const fetch = require("node-fetch");
 require("dotenv").config();
-
-const textRoutes = require("./routes/textRoutes"); // ✅ Import the missing texts route
+const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "https://voice-collector-frontend.onrender.com" })); // ✅ Allow frontend access
+app.use(cors({ origin: "https://voice-collector-frontend.onrender.com" })); // Allow frontend access
+const textRoutes = require("./routes/textRoutes");
 
-// ✅ Generate a fresh Dropbox access token using refresh token
+app.use("/texts", textRoutes);
+// ✅ Function to Generate a Fresh Dropbox Access Token
 const getDropboxAccessToken = async () => {
-    const response = await fetch("https://api.dropbox.com/oauth2/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-            grant_type: "refresh_token",
-            refresh_token: process.env.DROPBOX_REFRESH_TOKEN,
-            client_id: process.env.DROPBOX_APP_KEY,
-            client_secret: process.env.DROPBOX_APP_SECRET,
-        }),
-    });
+    try {
+        const response = await fetch("https://api.dropbox.com/oauth2/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                grant_type: "refresh_token",
+                refresh_token: process.env.DROPBOX_REFRESH_TOKEN,
+                client_id: process.env.DROPBOX_APP_KEY,
+                client_secret: process.env.DROPBOX_APP_SECRET,
+            }),
+        });
 
-    const data = await response.json();
-    return data.access_token;
+        const data = await response.json();
+
+        if (!data.access_token) {
+            throw new Error("Failed to refresh Dropbox access token");
+        }
+
+        return data.access_token;
+    } catch (error) {
+        console.error("❌ Error getting Dropbox access token:", error);
+        throw new Error("Authorization failed");
+    }
 };
 
-// ✅ Multer for handling file uploads
+// ✅ Multer for Handling File Uploads
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ✅ Upload and Convert Audio to Dropbox
+// ✅ Upload & Convert Audio to Dropbox
 app.post("/audio/upload", upload.single("audio"), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
         const textId = req.body.id || `audio_${Date.now()}`; // Use text ID or fallback
-        const tempFilePath = `./temp_${textId}.wav`; // Temp file for conversion
+        const tempFilePath = `./temp_${textId}.wav`; // Temporary file for conversion
 
         // ✅ Convert to 16kHz using FFmpeg
         await new Promise((resolve, reject) => {
@@ -56,12 +66,13 @@ app.post("/audio/upload", upload.single("audio"), async (req, res) => {
                 .pipe(outputStream);
         });
 
-        // ✅ Upload to Dropbox in "Voice Dataset" folder
-        const dbx = new Dropbox({ accessToken: await getDropboxAccessToken(), fetch });
+        // ✅ Get Fresh Access Token Before Upload
+        const dropboxAccessToken = await getDropboxAccessToken();
+        const dbx = new Dropbox({ accessToken: dropboxAccessToken, fetch });
         const dropboxPath = `/Voice Dataset/${textId}.wav`;
 
         const fileContent = fs.readFileSync(tempFilePath);
-        await dbx.filesUpload({ path: dropboxPath, contents: fileContent });
+        await dbx.filesUpload({ path: dropboxPath, contents: fileContent, mode: "overwrite" });
 
         // ✅ Get Public URL
         const sharedLink = await dbx.sharingCreateSharedLinkWithSettings({ path: dropboxPath });
@@ -77,7 +88,10 @@ app.post("/audio/upload", upload.single("audio"), async (req, res) => {
 // ✅ Fetch Audio Files from Dropbox
 app.get("/audio/files", async (req, res) => {
     try {
-        const dbx = new Dropbox({ accessToken: await getDropboxAccessToken(), fetch });
+        // ✅ Get Fresh Access Token Before Request
+        const dropboxAccessToken = await getDropboxAccessToken();
+        const dbx = new Dropbox({ accessToken: dropboxAccessToken, fetch });
+
         const response = await dbx.filesListFolder({ path: "/Voice Dataset" });
 
         const fileLinks = await Promise.all(
@@ -93,9 +107,6 @@ app.get("/audio/files", async (req, res) => {
         res.status(500).json({ error: "Error fetching files" });
     }
 });
-
-// ✅ Use the missing text routes
-app.use("/texts", textRoutes);
 
 // ✅ Start Server
 const PORT = process.env.PORT || 3000;
