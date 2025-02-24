@@ -182,7 +182,7 @@ const fetchAudioFiles = async () => {
       {texts.length === 0 && <p>⚠ No file uploaded</p>}
 
       {currentText ? (
-        <p>📝 {typeof currentText === "string" ? currentText : currentText.text || "No text available"}</p>
+        <p>📝 {typeof currentText === "string" ? currentText : currentText.Text || "No text available"}</p>
       ) : (
         <p>✅ All recordings completed!</p>
       )}
