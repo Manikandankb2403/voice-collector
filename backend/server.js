@@ -4,98 +4,91 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const { Dropbox } = require("dropbox");
+const ffmpeg = require("fluent-ffmpeg"); // ✅ For audio conversion
 require("dotenv").config();
-const fetch = require("node-fetch"); // Ensure node-fetch is installed
 
 const app = express();
 app.use(express.json());
 
-// ✅ Enable CORS for Frontend & Allow Testing
-app.use(
-    cors({
-        origin: "*", // Change to frontend URL when in production
-        methods: "GET,POST,DELETE",
-        allowedHeaders: "Content-Type,Authorization",
-    })
-);
+// ✅ Enable CORS for Frontend URL
+app.use(cors({
+    origin: "https://voice-collector-frontend.onrender.com", // Your frontend URL
+    methods: "GET,POST,DELETE",
+    allowedHeaders: "Content-Type,Authorization"
+}));
 
 // ✅ Configure Dropbox
-const dbx = new Dropbox({ accessToken: process.env.DROPBOX_ACCESS_TOKEN, fetch });
+const dbx = new Dropbox({ accessToken: process.env.DROPBOX_ACCESS_TOKEN, fetch: require("node-fetch") });
 
 // ✅ Multer Storage (Temporary Storage Before Uploading to Dropbox)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ✅ Function to Get or Create a Shared Link
-const getDropboxSharedLink = async (filePath) => {
-    try {
-        // Check if a shared link already exists
-        const existingLinks = await dbx.sharingListSharedLinks({ path: filePath });
-
-        if (existingLinks.result.links.length > 0) {
-            return existingLinks.result.links[0].url.replace("?dl=0", "?raw=1");
-        }
-
-        // If no link exists, create a new one
-        const sharedLink = await dbx.sharingCreateSharedLinkWithSettings({ path: filePath });
-        return sharedLink.result.url.replace("?dl=0", "?raw=1");
-    } catch (error) {
-        console.error("❌ Error generating Dropbox link:", error);
-        return null;
-    }
-};
-
-// ✅ API to Handle File Uploads to Dropbox
+// ✅ API to handle file uploads to Dropbox
 app.post("/audio/upload", upload.single("audio"), async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: "No file uploaded" });
+        if (!req.file || !req.body.id) {
+            return res.status(400).json({ error: "Missing file or ID" });
         }
 
-        const fileName = `/voice-recordings/${req.file.originalname || `audio_${Date.now()}.wav`}`;
+        const textId = req.body.id; // ✅ Get ID from frontend
+        const tempFilePath = path.join(__dirname, `${textId}_temp.wav`);
+        const convertedFilePath = path.join(__dirname, `${textId}_16khz.wav`);
 
-        // Upload file to Dropbox
-        const response = await dbx.filesUpload({
-            path: fileName,
-            contents: req.file.buffer,
-            mode: { ".tag": "add" }, // Prevent overwriting files
+        // ✅ Save file temporarily for conversion
+        fs.writeFileSync(tempFilePath, req.file.buffer);
+
+        // ✅ Convert to 16kHz using FFmpeg
+        await new Promise((resolve, reject) => {
+            ffmpeg(tempFilePath)
+                .audioFrequency(16000) // ✅ Convert audio to 16kHz
+                .toFormat("wav")
+                .on("end", resolve)
+                .on("error", reject)
+                .save(convertedFilePath);
         });
 
-        // Get or Create Shareable Link
-        const fileUrl = await getDropboxSharedLink(response.result.path_lower);
+        // ✅ Read converted file and upload to Dropbox
+        const convertedAudioBuffer = fs.readFileSync(convertedFilePath);
+        const dropboxFilePath = `/Voice Dataset/${textId}.wav`;
 
-        if (!fileUrl) {
-            return res.status(500).json({ error: "Failed to generate shareable link" });
-        }
+        // ✅ Upload file to Dropbox
+        const response = await dbx.filesUpload({ path: dropboxFilePath, contents: convertedAudioBuffer });
 
-        res.json({ message: "✅ File uploaded successfully!", fileUrl });
+        // ✅ Create a sharable link
+        const sharedLink = await dbx.sharingCreateSharedLinkWithSettings({ path: response.result.path_lower });
+
+        // ✅ Cleanup temporary files
+        fs.unlinkSync(tempFilePath);
+        fs.unlinkSync(convertedFilePath);
+
+        res.json({ message: "✅ File uploaded successfully!", fileUrl: sharedLink.result.url.replace("?dl=0", "?raw=1") });
     } catch (error) {
         console.error("❌ Upload failed:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
-// ✅ API to Get List of Uploaded Audio Files from Dropbox
+// ✅ API to get list of uploaded audio files from Dropbox
 app.get("/audio/files", async (req, res) => {
     try {
-        const response = await dbx.filesListFolder({ path: "/voice-recordings" });
+        const response = await dbx.filesListFolder({ path: "/Voice Dataset" });
 
         const fileLinks = await Promise.all(
             response.result.entries.map(async (file) => {
-                const fileUrl = await getDropboxSharedLink(file.path_lower);
-                return fileUrl ? { name: file.name, url: fileUrl } : null;
+                const sharedLink = await dbx.sharingCreateSharedLinkWithSettings({ path: file.path_lower });
+                return { name: file.name, url: sharedLink.result.url.replace("?dl=0", "?raw=1") };
             })
         );
 
-        res.json(fileLinks.filter(Boolean)); // Remove null entries
+        res.json(fileLinks);
     } catch (error) {
         console.error("❌ Error fetching files:", error);
         res.status(500).json({ error: "Error fetching files" });
     }
 });
 
-// ✅ Start Server
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);
 });
