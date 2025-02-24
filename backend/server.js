@@ -9,6 +9,16 @@ require("dotenv").config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+const express = require("express");
+const cors = require("cors");
+
+
+// ✅ Enable CORS for Frontend URL
+app.use(cors({
+    origin: "https://voice-collector-frontend.onrender.com", // Your frontend URL
+    methods: "GET,POST,DELETE",
+    allowedHeaders: "Content-Type,Authorization"
+}));
 
 // ✅ Configure Dropbox
 const dbx = new Dropbox({ accessToken: process.env.DROPBOX_ACCESS_TOKEN, fetch: require("node-fetch") });
