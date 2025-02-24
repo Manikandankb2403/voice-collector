@@ -8,7 +8,7 @@ const ffmpeg = require("fluent-ffmpeg");
 const fetch = require("node-fetch");
 require("dotenv").config();
 
-const textRoutes = require("./textRoutes"); // ✅ Import the missing texts route
+const textRoutes = require("./routes/textRoutes"); // ✅ Import the missing texts route
 
 const app = express();
 app.use(express.json());
