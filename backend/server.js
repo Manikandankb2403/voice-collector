@@ -5,12 +5,14 @@ const fs = require("fs");
 const path = require("path");
 const { Dropbox } = require("dropbox");
 const ffmpeg = require("fluent-ffmpeg");
-require("dotenv").config();
 const fetch = require("node-fetch");
+require("dotenv").config();
+
+const textRoutes = require("./textRoutes"); // ✅ Import the missing texts route
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "https://voice-collector-frontend.onrender.com" })); // Allow frontend access
+app.use(cors({ origin: "https://voice-collector-frontend.onrender.com" })); // ✅ Allow frontend access
 
 // ✅ Generate a fresh Dropbox access token using refresh token
 const getDropboxAccessToken = async () => {
@@ -91,6 +93,9 @@ app.get("/audio/files", async (req, res) => {
         res.status(500).json({ error: "Error fetching files" });
     }
 });
+
+// ✅ Use the missing text routes
+app.use("/texts", textRoutes);
 
 // ✅ Start Server
 const PORT = process.env.PORT || 3000;
