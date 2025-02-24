@@ -7,11 +7,7 @@ const { Dropbox } = require("dropbox");
 require("dotenv").config();
 
 const app = express();
-app.use(cors());
 app.use(express.json());
-const express = require("express");
-const cors = require("cors");
-
 
 // ✅ Enable CORS for Frontend URL
 app.use(cors({
