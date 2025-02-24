@@ -110,34 +110,123 @@ const Recorder = () => {
   };
 
   // ✅ Save Recording
-  const saveRecording = async () => {
+  // ✅ Save Recording in "Voice Dataset" folder and ensure 16kHz sample rate
+const saveRecording = async () => {
+    if (!currentText || audioChunks.length === 0) return;
+
     try {
-        if (!audioBlob || !currentText) {
-            console.error("❌ No audio or text available.");
-            return;
-        }
+        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
 
-        const formData = new FormData();
-        const textId = currentText.id || `text_${Date.now()}`;
-        formData.append("audio", audioBlob, `${textId}.wav`);
+        // 🔥 Convert audio to 16kHz
+        const convertedBlob = await convertAudioTo16kHz(audioBlob);
 
-        // ✅ Upload to Dropbox
-        const response = await axios.post("https://voice-collector-backend.onrender.com/audio/upload", formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-        });
+        // 🔥 Ask user to select a folder (only once)
+        const baseHandle = await window.showDirectoryPicker();
 
-        console.log("✅ File uploaded:", response.data.fileUrl);
+        // 🔥 Create or access "Voice Dataset" folder inside selected directory
+        const datasetHandle = await baseHandle.getDirectoryHandle("Voice Dataset", { create: true });
 
-        // ✅ Remove first text after saving
-        await removeFirstText();
+        // 🔥 Create and write to the file
+        const fileHandle = await datasetHandle.getFileHandle(`${currentText.id}.wav`, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(convertedBlob);
+        await writable.close();
 
-        setAudioBlob(null);
+        console.log(`✅ Saved in Voice Dataset/${currentText.id}.wav`);
+        alert(`Saved in: ${baseHandle.name}/Voice Dataset/${currentText.id}.wav`);
+
+        // Remove first text from the list
+        await axios.delete("http://localhost:3000/texts/remove-first");
+        setTexts((prev) => prev.slice(1));
+        setCurrentText(texts[1]);
+
         setAudioUrl(null);
     } catch (error) {
-        console.error("❌ Error saving audio:", error.response?.data || error.message);
+        console.error("❌ Error saving file:", error);
+        alert("Error saving file. Please try again.");
     }
 };
 
+// ✅ Function to Convert Audio to 16kHz
+const convertAudioTo16kHz = async (blob) => {
+    return new Promise((resolve, reject) => {
+        const audioContext = new AudioContext({ sampleRate: 16000 }); // Force 16kHz
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+            const arrayBuffer = event.target.result;
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const offlineContext = new OfflineAudioContext(audioBuffer.numberOfChannels, audioBuffer.length, 16000);
+
+            const source = offlineContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offlineContext.destination);
+            source.start();
+
+            offlineContext.startRendering().then((renderedBuffer) => {
+                audioContext.close();
+                offlineContext.close();
+
+                const wavBlob = bufferToWave(renderedBuffer, renderedBuffer.length);
+                resolve(wavBlob);
+            });
+        };
+
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(blob);
+    });
+};
+
+// ✅ Convert AudioBuffer to WAV Blob
+const bufferToWave = (buffer, length) => {
+    const numOfChan = buffer.numberOfChannels,
+        lengthInBytes = length * numOfChan * 2 + 44,
+        bufferArray = new ArrayBuffer(lengthInBytes),
+        view = new DataView(bufferArray);
+
+    let offset = 0;
+    const writeString = (str) => {
+        for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset++, str.charCodeAt(i));
+        }
+    };
+
+    writeString("RIFF");
+    view.setUint32(offset, 36 + length * numOfChan * 2, true);
+    offset += 4;
+    writeString("WAVE");
+    writeString("fmt ");
+    view.setUint32(offset, 16, true);
+    offset += 4;
+    view.setUint16(offset, 1, true);
+    offset += 2;
+    view.setUint16(offset, numOfChan, true);
+    offset += 2;
+    view.setUint32(offset, 16000, true); // 16kHz sample rate
+    offset += 4;
+    view.setUint32(offset, 16000 * numOfChan * 2, true);
+    offset += 4;
+    view.setUint16(offset, numOfChan * 2, true);
+    offset += 2;
+    view.setUint16(offset, 16, true);
+    offset += 2;
+    writeString("data");
+    view.setUint32(offset, length * numOfChan * 2, true);
+    offset += 4;
+
+    const audioData = new Float32Array(buffer.getChannelData(0));
+    const pcmData = new Int16Array(audioData.length);
+
+    for (let i = 0; i < audioData.length; i++) {
+        pcmData[i] = Math.max(-1, Math.min(1, audioData[i])) * 0x7fff;
+    }
+
+    for (let i = 0; i < pcmData.length; i++, offset += 2) {
+        view.setInt16(offset, pcmData[i], true);
+    }
+
+    return new Blob([bufferArray], { type: "audio/wav" });
+};
 // ✅ Fetch Audio Files
 const fetchAudioFiles = async () => {
     try {
