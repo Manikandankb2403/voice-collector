@@ -44,15 +44,6 @@ const Recorder = () => {
   };
 
   // ✅ Fetch recorded audio files
-  const fetchAudioFiles = async () => {
-    try {
-      const response = await axios.get("https://voice-collector-backend.onrender.com/audio/files");
-      setRecordedFiles(response.data);
-    } catch (error) {
-      console.error("❌ Error loading audio files:", error);
-    }
-  };
-
   // ✅ Handle JSON Upload
   const handleJsonUpload = async (e) => {
     const file = e.target.files[0];
@@ -127,22 +118,17 @@ const Recorder = () => {
         }
 
         const formData = new FormData();
-        const textId = currentText.id || `text_${Date.now()}`; // Use text ID or fallback
+        const textId = currentText.id || `text_${Date.now()}`;
         formData.append("audio", audioBlob, `${textId}.wav`);
 
-        // ✅ Upload to backend (which handles KrakenFiles)
+        // ✅ Upload to Dropbox
         const response = await axios.post("https://voice-collector-backend.onrender.com/audio/upload", formData, {
             headers: { "Content-Type": "multipart/form-data" },
         });
 
-        if (response.data.url) {
-            console.log(`✅ File uploaded: ${response.data.url}`);
-            alert(`✅ File uploaded: ${response.data.url}`);
-        } else {
-            console.error("❌ Upload failed:", response.data);
-        }
+        console.log("✅ File uploaded:", response.data.fileUrl);
 
-        // ✅ Remove first text from JSONBin.io after saving
+        // ✅ Remove first text after saving
         await removeFirstText();
 
         setAudioBlob(null);
@@ -151,6 +137,18 @@ const Recorder = () => {
         console.error("❌ Error saving audio:", error.response?.data || error.message);
     }
 };
+
+// ✅ Fetch Audio Files
+const fetchAudioFiles = async () => {
+    try {
+        const response = await axios.get("https://voice-collector-backend.onrender.com/audio/files");
+        console.log("🎵 Audio files:", response.data);
+        setRecordedFiles(response.data);
+    } catch (error) {
+        console.error("❌ Error loading audio files:", error);
+    }
+};
+
 
   // ✅ Remove first text after saving audio
   const removeFirstText = async () => {
@@ -200,16 +198,16 @@ const Recorder = () => {
         </>
       )}
 
-      <h2>🎵 Recorded Files</h2>
-      {recordedFiles.length > 0 ? (
-        recordedFiles.map((file, index) => (
-          <p key={index}>
-            🔊 <a href={file} target="_blank" rel="noopener noreferrer">Recording {index + 1}</a> ▶️
-          </p>
-        ))
-      ) : (
-        <p>(No recordings yet)</p>
-      )}
+<h2>🎵 Recorded Files</h2>
+{recordedFiles.length > 0 ? (
+    recordedFiles.map((file, index) => (
+        <p key={index}>
+            🔊 <a href={file.url} target="_blank" rel="noopener noreferrer">Recording {index + 1}</a> ▶️
+        </p>
+    ))
+) : (
+    <p>(No recordings yet)</p>
+)}
     </div>
   );
 };

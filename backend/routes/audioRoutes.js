@@ -1,66 +1,63 @@
-require("dotenv").config(); // Load environment variables
-
+require("dotenv").config();
 const express = require("express");
-const axios = require("axios");
 const multer = require("multer");
-const FormData = require("form-data");
+const fetch = require("node-fetch");
+const { Dropbox } = require("dropbox");
 
 const router = express.Router();
+
+// ✅ Initialize Dropbox SDK
+const dbx = new Dropbox({
+    accessToken: process.env.DROPBOX_ACCESS_TOKEN,
+    fetch: fetch
+});
+
+// ✅ Configure Multer (Memory Storage for Direct Upload)
 const upload = multer({ storage: multer.memoryStorage() });
 
-const KRAKENFILES_API_URL = "https://api.krakenfiles.com/v1/upload";
-const KRAKENFILES_API_KEY = process.env.KRAKENFILES_API_KEY; // Set this in .env
-
-// ✅ Upload audio to KrakenFiles
+// ✅ Upload Audio to Dropbox
 router.post("/upload", upload.single("audio"), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-
     try {
-        console.log(`📤 Uploading ${req.file.originalname} to KrakenFiles...`);
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-        if (!KRAKENFILES_API_KEY) {
-            console.error("❌ Missing KrakenFiles API Key in .env");
-            return res.status(500).json({ error: "Server misconfiguration: API key missing" });
-        }
+        const filePath = `${process.env.DROPBOX_FOLDER_PATH}/${req.file.originalname}`;
 
-        const formData = new FormData();
-        formData.append("file", req.file.buffer, req.file.originalname);
-
-        const response = await axios.post(KRAKENFILES_API_URL, formData, {
-            headers: {
-                ...formData.getHeaders(),
-                "Authorization": `Bearer ${KRAKENFILES_API_KEY}`
-            }
+        // Upload to Dropbox
+        const response = await dbx.filesUpload({
+            path: filePath,
+            contents: req.file.buffer,
+            mode: "add"
         });
 
-        if (response.data.success) {
-            const fileData = response.data.data;
+        // Create a sharable link
+        const sharedLink = await dbx.sharingCreateSharedLinkWithSettings({
+            path: response.result.path_lower,
+            settings: { requested_visibility: { ".tag": "public" } }
+        });
 
-            // ✅ Extract the **real** download link
-            const fileUrl = fileData.url || fileData.download_url || fileData.links.file;
-
-            if (!fileUrl) {
-                console.error("❌ No valid download URL returned from KrakenFiles");
-                return res.status(500).json({ error: "Invalid KrakenFiles response", details: fileData });
-            }
-
-            console.log(`✅ File uploaded successfully: ${fileUrl}`);
-
-            return res.json({
-                message: "File uploaded successfully!",
-                url: fileUrl // ✅ Correct KrakenFiles link
-            });
-        } else {
-            console.error("❌ Upload failed:", response.data);
-            return res.status(500).json({ error: "KrakenFiles upload failed", details: response.data });
-        }
+        res.json({ message: "✅ File uploaded!", fileUrl: sharedLink.result.url.replace("?dl=0", "?raw=1") });
     } catch (error) {
-        console.error("❌ Upload error:", error.response?.data || error.message);
-        return res.status(500).json({ error: "Internal server error", details: error.response?.data || error.message });
+        console.error("❌ Upload failed:", error);
+        res.status(500).json({ error: "Error uploading file" });
     }
 });
 
-// ✅ Serve uploaded files
+// ✅ Fetch Stored Audio Files
+router.get("/files", async (req, res) => {
+    try {
+        const response = await dbx.filesListFolder({ path: process.env.DROPBOX_FOLDER_PATH });
+
+        const files = response.result.entries.map(file => ({
+            name: file.name,
+            url: `https://www.dropbox.com/home${file.path_lower}?raw=1`
+        }));
+
+        res.json(files);
+    } catch (error) {
+        console.error("❌ Error fetching files:", error);
+        res.status(500).json({ error: "Error fetching files" });
+    }
+});
 // Get list of uploaded files from Cloudinary
 router.get("/files", async (req, res) => {
     try {
