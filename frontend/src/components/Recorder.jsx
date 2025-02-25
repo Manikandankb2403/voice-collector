@@ -11,9 +11,8 @@ const Recorder = () => {
   const [recordedFiles, setRecordedFiles] = useState([]);
 
   const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]); // ✅ Stores audio chunks
+  const audioChunksRef = useRef([]);
 
-  // ✅ Load Texts and Audio Files on Page Load
   useEffect(() => {
     fetchTexts();
     fetchAudioFiles();
@@ -93,7 +92,7 @@ const Recorder = () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mediaRecorder = new MediaRecorder(stream);
-        audioChunksRef.current = []; // ✅ Reset before new recording
+        audioChunksRef.current = [];
 
         mediaRecorder.ondataavailable = (e) => {
           audioChunksRef.current.push(e.data);
@@ -129,7 +128,7 @@ const Recorder = () => {
       }
 
       const formData = new FormData();
-      const textId = currentText.id || `text_${Date.now()}`; // ✅ Use JSON text ID as filename
+      const textId = currentText.id || `text_${Date.now()}`;
       formData.append("audio", audioBlob, `${textId}.wav`);
       formData.append("id", textId);
 
@@ -148,7 +147,7 @@ const Recorder = () => {
 
       setAudioBlob(null);
       setAudioUrl(null);
-      fetchAudioFiles(); // ✅ Refresh recorded files
+      fetchAudioFiles(); // ✅ Refresh recorded files list
     } catch (error) {
       console.error("❌ Error saving audio:", error.response?.data || error.message);
     }
